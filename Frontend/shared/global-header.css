@@ -1,0 +1,110 @@
+/* 🌟 GLOBAL HEADER CSS – Dùng cho mọi trang */
+
+/* 🌟 GLOBAL HEADER CSS – Dùng cho mọi trang */
+.app_header {
+    position: fixed;              /* 🔒 Luôn cố định khi cuộn */
+    top: 0;                       /* Dính sát mép trên */
+    left: 0;
+    right: 0;
+    z-index: 1000;                /* Hiển thị trên mọi phần khác */
+
+    background-color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 25px;
+    border-radius: 0;             /* ❗ Bỏ bo góc để header dính mép */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+
+    max-width: 100%;              /* Trải hết ngang màn hình */
+    margin: 0;                    /* Bỏ margin để không bị tụt xuống */
+}
+
+
+.logo img {
+    height: 50px;
+    animation: fly 3s ease-in-out infinite;
+    cursor: pointer;
+    transition: transform 0.3s;
+}
+
+.logo:hover {
+    transform: scale(1.06);
+}
+
+@keyframes fly {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    25% { transform: translate(5px, -5px) rotate(5deg); }
+    50% { transform: translate(0, -10px) rotate(0deg); }
+    75% { transform: translate(-5px, -5px) rotate(-5deg); }
+    100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+.main_nav {
+    display: flex;
+    gap: 20px;
+}
+
+.main_nav a {
+    text-decoration: none;
+    color: #555;
+    font-weight: bold;
+    font-size: 14px;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.main_nav a.active {
+    color: #933eb7;
+}
+
+.profile_link {
+    text-decoration: none;
+    color: #555;
+    font-weight: bold;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.profile_placeholder {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: #e0e0e0;
+    background-size: cover;
+    background-position: center;
+    border: 2px solid #8e44ad;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transition: transform 0.2s ease;
+}
+
+.profile_placeholder:hover {
+    transform: scale(1.05);
+}
+
+.profile_placeholder {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: #ddd;
+    background-size: cover;
+    background-position: center;
+    border: 2px solid #8e44ad;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease;
+}
+
+.profile_placeholder:hover {
+    transform: scale(1.05);
+}
+body {
+    padding-top: 90px; /* 👈 bằng chiều cao header (50px logo + padding) */
+}
+body.scrolled .app_header {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    transition: box-shadow 0.3s ease;
+}

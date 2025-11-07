@@ -1,3 +1,4 @@
+#fix lỗi hiển thị tiếng Việt
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 

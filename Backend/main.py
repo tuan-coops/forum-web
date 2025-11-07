@@ -1,70 +1,104 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from database import engine, Base, get_db
-from models import Forum
-from schemas import ForumCreate, ForumResponse
-from typing import List
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse
+from database import Base, engine
+from routers.auth import router as auth_router
+from routers.forum import router as forum_router
+from routers.profile import router as profile_router
+from routers import membership, message
+from routers import chat  # thêm dòng này
+import os
 
-# Tạo bảng trong DB nếu chưa có
-Base.metadata.create_all(bind=engine)
+app = FastAPI(title="Forum API - FastAPI + MySQL")
 
-app = FastAPI()
+# 🧭 Đường dẫn Frontend
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIR = os.path.join(BASE_DIR, "../Frontend")
+print("📂 Đường dẫn Frontend:", FRONTEND_DIR)
 
-@app.post("/forum/create", response_model=ForumResponse)
-def create_forum(forum: ForumCreate, db: Session = Depends(get_db)):
-    # Tạo forum mới
-    new_forum = Forum(
-        name=forum.name,
-        description=forum.description,
-        tag=forum.tag,
-        avatar=forum.avatar,
-        background=forum.background,
-        created_by=forum.created_by,
-    )
+# 🟢 Mount thư mục Frontend & static
+if os.path.exists(FRONTEND_DIR):
+    app.mount("/Frontend", StaticFiles(directory=FRONTEND_DIR), name="frontend")
 
-    db.add(new_forum)
-    db.commit()
-    db.refresh(new_forum)
-
-    return new_forum
-
-# 🟠 Cập nhật forum
-@app.put("/forum/{forum_id}", response_model=ForumResponse)
-def update_forum(forum_id: int, forum: ForumCreate, db: Session = Depends(get_db)):
-    db_forum = db.query(Forum).filter(Forum.forum_id == forum_id).first()
-    if not db_forum:
-        raise HTTPException(status_code=404, detail="Forum not found")
-
-    db_forum.name = forum.name
-    db_forum.description = forum.description
-    db_forum.tag = forum.tag
-    db_forum.avatar = forum.avatar
-    db_forum.background = forum.background
-
-    db.commit()
-    db.refresh(db_forum)
-    return db_forum
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-# 🔵 Lấy tất cả forum
-@app.get("/forum/", response_model=List[ForumResponse])
-def get_forums(db: Session = Depends(get_db)):
-    forums = db.query(Forum).all()
-    return forums
-# 🟡 Lấy forum theo ID
-@app.get("/forum/{forum_id}", response_model=ForumResponse)
-def get_forum_by_id(forum_id: int, db: Session = Depends(get_db)):
-    forum = db.query(Forum).filter(Forum.forum_id == forum_id).first()
-    if not forum:
-        raise HTTPException(status_code=404, detail="Forum not found")
-    return forum
-# 🔴 Xóa forum
-@app.delete("/forum/{forum_id}")
-def delete_forum(forum_id: int, db: Session = Depends(get_db)):
-    db_forum = db.query(Forum).filter(Forum.forum_id == forum_id).first()
-    if not db_forum:
-        raise HTTPException(status_code=404, detail="Forum not found")
+# ⚙️ Cho phép frontend gọi API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# 🧠 Load toàn bộ models trước khi tạo bảng
+import models
 
-    db.delete(db_forum)
-    db.commit()
-    return {"message": f"Forum {forum_id} deleted successfully"}
+# 🧩 Tạo bảng nếu chưa có
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print("⚠️ Không thể kết nối cơ sở dữ liệu:", e)
+
+
+# 🔗 Gắn routers TRƯỚC redirect
+app.include_router(auth_router)
+app.include_router(forum_router)
+app.include_router(profile_router)
+app.include_router(membership.router)
+app.include_router(message.router)
+app.include_router(chat.router)  # thêm dòng này sau các router khác
+
+print("✅ Routers đã được include thành công!")
+
+# 🟣 Khi truy cập gốc '/', mở login-page
+@app.get("/")
+def open_login():
+    login_path = os.path.join(FRONTEND_DIR, "home-page", "index.html")
+    if not os.path.exists(login_path):
+        return {"error": "Không tìm thấy file login-page/index.html"}
+    return FileResponse(login_path)
+
+# 🔁 Redirect CHỈ cho frontend
+@app.get("/{folder}/{path:path}")
+def redirect_frontend(folder: str, path: str, request: Request):
+    frontend_folders = {
+        "home-page",
+        "profile-page",
+        "register-page",
+        "create-forum-page",
+        "search2-page"
+    }
+
+    if folder in frontend_folders:
+        return RedirectResponse(url=f"/Frontend/{folder}/{path}")
+
+    return {"detail": "Not Found"}
+# ============================================================
+# 📎 API UPLOAD FILE (TƯƠNG THÍCH VERCEL)
+# ============================================================
+from fastapi import UploadFile, File
+import shutil
+
+# 🔹 Đặt đường dẫn upload tương đối (tránh crash trên Vercel)
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """Nhận file tải lên và lưu vào thư mục uploads/"""
+    try:
+        file_path = os.path.join(UPLOAD_DIR, file.filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return {"url": f"/uploads/{file.filename}"}
+    except Exception as e:
+        return {"error": f"Không thể lưu file: {e}"}
+
+# 🔹 Cho phép truy cập file qua URL
+if os.path.exists(UPLOAD_DIR):
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+else:
+    print("⚠️ uploads directory not found, skip mounting")
