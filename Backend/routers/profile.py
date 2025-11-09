@@ -5,6 +5,10 @@ from models.user import User
 from models.post import Post   # 👈 Thêm import này
 from datetime import datetime  # 👈 Thêm import
 from pydantic import BaseModel # 👈 Thêm import
+from sqlalchemy import func
+from models.forum import Forum
+from models.membership import Membership
+from models.like import Like as ForumLike
 import os, shutil
 
 router = APIRouter()
@@ -133,3 +137,35 @@ def delete_post(post_id: int, db: Session = Depends(get_db)):
     db.delete(post)
     db.commit()
     return {"message": "Xoá bài viết thành công"}
+# ============================================================
+# 🟣 LẤY THÔNG TIN CHI TIẾT USER (DÙNG CHO USER-PROFILE)
+# ============================================================
+@router.get("/user/{user_id}")
+def get_user_detail(user_id: int, request: Request, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+
+    base_url = str(request.base_url).rstrip("/")
+    avatar_url = f"{base_url}/static/uploads/{user.avatar}" if user.avatar else None
+
+    # ✅ Thống kê
+    forum_created = db.query(func.count(Forum.forum_id)).filter(Forum.created_by == user_id).scalar()
+    forum_joined = db.query(func.count(Membership.forum_id)).filter(Membership.user_id == user_id).scalar()
+
+    try:
+        total_likes = db.query(func.count(ForumLike.forum_id)).filter(ForumLike.user_id == user_id).scalar()
+    except Exception:
+        total_likes = 0
+
+    return {
+        "user_id": user.user_id,
+        "username": user.username,
+        "email": user.email,
+        "bio": user.bio,
+        "avatar": avatar_url,
+        "forum_created": forum_created,
+        "forum_joined": forum_joined,
+        "total_likes": total_likes,
+        "created_at": user.created_at,
+    }

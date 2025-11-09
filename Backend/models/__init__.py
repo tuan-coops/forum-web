@@ -5,4 +5,7 @@ from models.membership import Membership
 from models.message import Message   # 🟢 thêm dòng này trước configure_mappers
 from models.like import Like 
 from sqlalchemy.orm import configure_mappers
+from .tag import Tag
+from .forum_tag import ForumTag  
+
 configure_mappers()  # chỉ an toàn khi tất cả model đã được import

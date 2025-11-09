@@ -6,7 +6,7 @@ from database import Base, engine
 from routers.auth import router as auth_router
 from routers.forum import router as forum_router
 from routers.profile import router as profile_router
-from routers import membership, message, chat
+from routers import membership, message, chat, tag
 import os
 
 app = FastAPI(title="Forum API - FastAPI + MySQL")
@@ -54,6 +54,7 @@ app.include_router(profile_router)
 app.include_router(membership.router)
 app.include_router(message.router)
 app.include_router(chat.router)
+app.include_router(tag.router) 
 
 print("✅ Routers loaded successfully!")
 
@@ -85,9 +86,3 @@ def redirect_frontend(folder: str, path: str, request: Request):
 
     return {"detail": "Not Found"}
 
-# ===============================
-# 🚫 Bỏ tính năng upload (Vercel không hỗ trợ ghi file)
-# ===============================
-@app.post("/upload")
-async def upload_file_disabled():
-    return {"error": "🚫 Upload not supported on Vercel (read-only filesystem)"}

@@ -1,0 +1,46 @@
+/* =======================================
+   🌸 TAG NỔI BẬT - Pastel tím đồng nhất
+   ======================================= */
+.sidebar_section nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Thẻ tag */
+.tag_item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f9f3ff;              /* nền tím nhạt nhẹ */
+  color: #6a4caf;                   /* tím chữ mềm */
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  text-decoration: none;
+  transition: all 0.25s ease;
+  border: 1px solid #e6d9ff;        /* viền cùng tông */
+}
+
+/* Hover nhẹ, sáng hơn một chút */
+.tag_item:hover {
+  background: #efe3ff;
+  color: #5b35c5;
+  transform: translateX(3px);
+  box-shadow: 0 2px 6px rgba(106, 76, 175, 0.15);
+}
+
+/* Số lượng trong ngoặc (nhỏ, mờ hơn) */
+.tag_item .count {
+  font-size: 12px;
+  color: #9b8fcf;
+}
+
+/* Tag đang được chọn (active theo URL) */
+.tag_item.active {
+  background: #d9c6ff;
+  color: #3a2377;
+  font-weight: 600;
+  border-color: #bfa1ff;
+}

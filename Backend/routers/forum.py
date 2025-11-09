@@ -9,6 +9,7 @@ import shutil, os
 from models.membership import Membership, RoleEnum
 from models.user import User
 from models.like import Like
+from models.message import Message
 UPLOAD_DIR = "static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -183,7 +184,57 @@ def search_forums(request: Request, keyword: str = Query(..., min_length=1), db:
             for f in forums
         ]
     }
+# 🟣 Lấy danh sách forum theo tag, xếp theo số thành viên & lượt like
+@router.get("/by-tag/{tag_name}")
+def get_forums_by_tag(
+    tag_name: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Trả về danh sách forum có tag được chỉ định (tag lưu trực tiếp trong bảng forum),
+    sắp xếp theo member_count và like_count giảm dần
+    """
+    base_url = str(request.base_url).rstrip("/")
 
+    forums = (
+        db.query(
+            Forum,
+            func.count(func.distinct(Membership.user_id)).label("member_count"),
+            func.count(func.distinct(Like.like_id)).label("like_count")
+        )
+        .outerjoin(Membership, Membership.forum_id == Forum.forum_id)
+        .outerjoin(Like, Like.forum_id == Forum.forum_id)
+        .filter(func.lower(Forum.tag) == func.lower(tag_name))
+        .group_by(Forum.forum_id)
+        .order_by(func.count(func.distinct(Membership.user_id)).desc(),
+                  func.count(func.distinct(Like.like_id)).desc())
+        .all()
+    )
+
+    if not forums:
+        raise HTTPException(status_code=404, detail=f"Không có forum nào với tag '{tag_name}'")
+
+    results = []
+    for f, member_count, like_count in forums:
+        bg_url = f"{base_url}/static/{f.background}" if f.background else None
+        results.append({
+            "forum_id": f.forum_id,
+            "name": f.name,
+            "tag": f.tag,
+            "caption": f.caption,
+            "background": bg_url,
+            "created_by": f.created_by,
+            "created_at": f.created_at,
+            "member_count": member_count or 0,
+            "like_count": like_count or 0
+        })
+
+    return {
+        "tag": tag_name,
+        "total": len(results),
+        "results": results
+    }
 
 # 🔵 Lấy tất cả forums
 @router.get("/")
@@ -207,61 +258,137 @@ def get_all_forums(request: Request, db: Session = Depends(get_db)):
 # 🔵 Forums user đã tham gia
 @router.get("/joined/{user_id}")
 def get_joined_forums(request: Request, user_id: int, db: Session = Depends(get_db)):
+    """
+    Lấy danh sách forum mà user đã tham gia,
+    kèm số lượng thành viên, tin nhắn, và hoạt động gần nhất.
+    """
     joined_forums = (
         db.query(Forum)
         .join(Membership, Forum.forum_id == Membership.forum_id)
         .filter(Membership.user_id == user_id)
         .all()
     )
-    base_url = str(request.base_url).rstrip("/")
 
-    return [
-        {
+    base_url = str(request.base_url).rstrip("/")
+    results = []
+
+    for f in joined_forums:
+        # ✅ Đếm thành viên
+        member_count = (
+            db.query(func.count(Membership.user_id))
+            .filter(Membership.forum_id == f.forum_id)
+            .scalar()
+        )
+
+        # ✅ Đếm tin nhắn
+        try:
+            message_count = (
+                db.query(func.count(Message.message_id))
+                .filter(Message.forum_id == f.forum_id)
+                .scalar()
+            )
+        except Exception:
+            message_count = 0
+
+        # ✅ Lấy tin nhắn gần nhất + username
+        last_msg = (
+            db.query(Message, User.username)
+            .join(User, Message.user_id == User.user_id)
+            .filter(Message.forum_id == f.forum_id)
+            .order_by(Message.created_at.desc())
+            .first()
+        )
+
+        if last_msg:
+            msg, username = last_msg
+            last_activity = {
+                "user": username,
+                "time": msg.created_at
+            }
+        else:
+            last_activity = None
+
+        # ✅ Gộp kết quả
+        results.append({
             "forum_id": f.forum_id,
             "name": f.name,
             "tag": f.tag,
             "caption": f.caption,
             "background": f"{base_url}/static/{f.background}" if f.background else None,
             "created_by": f.created_by,
-            "created_at": f.created_at
-        }
-        for f in joined_forums
-    ]
+            "created_at": f.created_at,
+            "member_count": member_count,
+            "message_count": message_count,
+            "last_activity": last_activity
+        })
 
+    return results
 
 # 🟠 Forums user đã tạo
 @router.get("/created/{user_id}")
 def get_forums_created_by_user(request: Request, user_id: int, db: Session = Depends(get_db)):
+    from models.like import Like     # import bảng Like nếu có
+    from models.membership import Membership
+
     forums = db.query(Forum).filter(Forum.created_by == user_id).all()
     base_url = str(request.base_url).rstrip("/")
-    return [
-        {
+
+    result = []
+    for f in forums:
+        like_count = db.query(Like).filter(Like.forum_id == f.forum_id).count()
+        member_count = db.query(Membership).filter(Membership.forum_id == f.forum_id).count()
+
+        result.append({
             "forum_id": f.forum_id,
             "name": f.name,
             "tag": f.tag,
             "caption": f.caption,
             "background": f"{base_url}/static/{f.background}" if f.background else None,
-            "created_at": f.created_at
-        }
-        for f in forums
-    ]
+            "created_at": f.created_at,
+            "like_count": like_count,
+            "member_count": member_count
+        })
+    return result
 
 
-# 🟣 Lấy forum theo ID
+
+# 🟣 Lấy forum theo ID (kèm like_count & member_count)
 @router.get("/{forum_id}")
 def get_forum_by_id(request: Request, forum_id: int, db: Session = Depends(get_db)):
-    forum = db.query(Forum).filter(Forum.forum_id == forum_id).first()
-    if not forum:
-        raise HTTPException(status_code=404, detail="Không tìm thấy forum")
     base_url = str(request.base_url).rstrip("/")
+
+    # 🔹 Dùng join để đếm like và member (tương tự get_forum_list)
+    query = (
+        db.query(
+            Forum,
+            func.count(func.distinct(Membership.user_id)).label("member_count"),
+            func.count(func.distinct(Like.like_id)).label("like_count")
+        )
+        .outerjoin(Membership, Membership.forum_id == Forum.forum_id)
+        .outerjoin(Like, Like.forum_id == Forum.forum_id)
+        .filter(Forum.forum_id == forum_id)
+        .group_by(Forum.forum_id)
+    )
+
+    result = query.first()
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Không tìm thấy forum")
+
+    forum, member_count, like_count = result
+
+    bg_url = f"{base_url}/static/{forum.background}" if forum.background else None
+
     return {
         "forum_id": forum.forum_id,
         "name": forum.name,
         "tag": forum.tag,
         "caption": forum.caption,
-        "background": f"{base_url}/static/{forum.background}" if forum.background else None,
+        "background": bg_url,
         "created_by": forum.created_by,
-        "created_at": forum.created_at
+        "created_at": forum.created_at,
+        "member_count": member_count or 0,
+        "like_count": like_count or 0
     }
 
 
@@ -361,3 +488,45 @@ def update_forum_background(
         "message": "✅ Cập nhật ảnh forum thành công",
         "new_background_url": f"/static/uploads/{filename}"
     }
+# ❤️ Like / Unlike forum
+@router.post("/{forum_id}/like")
+def toggle_like(
+    forum_id: int,
+    user_id: int = Query(..., description="ID của người dùng thực hiện hành động"),
+    db: Session = Depends(get_db)
+):
+    forum = db.query(Forum).filter(Forum.forum_id == forum_id).first()
+    if not forum:
+        raise HTTPException(status_code=404, detail="Không tìm thấy forum")
+
+    existing_like = db.query(Like).filter(
+        Like.forum_id == forum_id,
+        Like.user_id == user_id
+    ).first()
+
+    # Nếu user đã like rồi => bỏ like
+    if existing_like:
+        db.delete(existing_like)
+        db.commit()
+        return {"liked": False, "message": "Đã bỏ thích"}
+
+    # Nếu chưa => thêm like
+    new_like = Like(forum_id=forum_id, user_id=user_id)
+    db.add(new_like)
+    db.commit()
+    return {"liked": True, "message": "Đã thích"}
+# ❤️ Lấy danh sách forum mà user đã like
+@router.get("/liked/{user_id}")
+def get_liked_forums(user_id: int, db: Session = Depends(get_db)):
+    liked_forums = db.query(Like.forum_id).filter(Like.user_id == user_id).all()
+    return {"liked_forum_ids": [f.forum_id for f in liked_forums]}
+@router.post("/upload")
+async def upload_forum_image(file: UploadFile = File(...)):
+    upload_dir = "static/uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    file_path = os.path.join(upload_dir, file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {"url": f"/static/uploads/{file.filename}"}
